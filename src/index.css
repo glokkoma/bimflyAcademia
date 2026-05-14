@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bimfli-mint: #65E0D4;
+  --color-bimfli-navy: #0A365C;
+  --color-bimfli-pink: #EC2772;
+  --color-bimfli-blue: #2B8AFA;
+}
+
+body {
+  margin: 0;
+  font-family: 'Nunito', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: var(--color-bimfli-mint);
+}
