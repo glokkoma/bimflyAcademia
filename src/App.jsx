@@ -24,7 +24,6 @@ function App() {
   const [isSticky, setIsSticky] = useState(false);
   const [currentView, setCurrentView] = useState('store');
   
-  // NUEVOS ESTADOS PARA FAVORITOS Y RESEÑAS
   const [misFavoritos, setMisFavoritos] = useState([]);
   const [resenas, setResenas] = useState([]);
 
@@ -38,15 +37,12 @@ function App() {
     async function fetchInitialData() {
       try {
         setIsLoading(true);
-        // Cargar Cursos
         const { data: coursesData, error: coursesError } = await supabase.from('courses').select('*');
         if (coursesError) throw coursesError;
         setCourses(coursesData || []);
 
-        // Cargar todas las Reseñas
         const { data: resenasData } = await supabase.from('resenas').select('*');
         setResenas(resenasData || []);
-
       } catch (error) { console.error(error.message); }
       finally { setIsLoading(false); }
     }
@@ -61,7 +57,6 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Cargar favoritos del usuario (Blindado con Number)
   useEffect(() => {
     async function fetchFavoritos() {
       if (user) {
@@ -74,7 +69,6 @@ function App() {
     fetchFavoritos();
   }, [user]);
 
-  // Función única de Favoritos
   const toggleFavorito = async (cursoId) => {
     if (!user) {
       setIsLoginOpen(true);
@@ -138,7 +132,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-bimfli-mint text-bimfli-navy font-sans flex flex-col relative scroll-smooth">
-      {/* NAVBAR COMPLETA */}
+      {/* NAVBAR */}
       <nav className="h-20 px-6 md:px-8 flex justify-between items-center sticky top-0 bg-bimfli-mint/95 backdrop-blur-md z-40 border-b border-white/20">
         <div className="flex items-center w-1/4 gap-4">
           <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="md:hidden text-bimfli-navy p-2 hover:bg-white/20 rounded-xl transition-colors cursor-pointer">
@@ -177,7 +171,6 @@ function App() {
         )}
       </nav>
 
-      {/* MAIN CONTENT */}
       <main className="max-w-5xl mx-auto px-6 pt-4 pb-32 grow w-full relative z-10">
         {currentView === 'store' && (
           <>
@@ -210,39 +203,72 @@ function App() {
               </div>
             )}
 
-            {/* SECCIONES DETALLADAS RESTAURADAS */}
+            {/* SECCIONES DETALLADAS CON OPINIONES REVISADAS */}
             {!isLoading && courses.length > 0 && (
               <div className="mt-32 flex flex-col gap-24">
-                {courses.map(course => (
-                  <div key={`detail-${course.id}`} id={`detalle-curso-${course.id}`} className="scroll-mt-32 bg-white p-8 md:p-12 rounded-[3rem] shadow-sm border border-gray-100">
-                    <h2 className="text-3xl md:text-4xl font-black text-bimfli-navy mb-4">{course.title}</h2>
-                    <p className="text-xl text-bimfli-pink font-bold italic mb-8">Domina todas las herramientas profesionales paso a paso.</p>
-                    <div className="flex gap-4 overflow-x-auto mb-8 pb-4 snap-x">
-                      <div className="min-w-70 h-48 bg-gray-200 rounded-2xl snap-center flex items-center justify-center text-gray-400 font-bold">Imagen 1</div>
-                      <div className="min-w-70 h-48 bg-gray-200 rounded-2xl snap-center flex items-center justify-center text-gray-400 font-bold">Imagen 2</div>
-                      <div className="min-w-70 h-48 bg-gray-200 rounded-2xl snap-center flex items-center justify-center text-gray-400 font-bold">Imagen 3</div>
-                    </div>
-                    <p className="text-gray-600 mb-10 leading-relaxed">
-                      {course.description} 
-                      <br /><br />
-                      Esta es la sección perfecta para incrustar el texto completo de la web externa.
-                    </p>
-                    <details className="group bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden cursor-pointer">
-                      <summary className="font-black p-6 text-bimfli-navy list-none flex justify-between items-center hover:bg-gray-100 transition-colors">
-                        VER TEMARIO COMPLETO
-                        <svg className="w-6 h-6 transform group-open:rotate-180 transition-transform text-bimfli-pink" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-                      </summary>
-                      <div className="p-6 border-t border-gray-200 text-gray-600 bg-white">
-                        <ul className="list-disc pl-5 space-y-3 font-medium">
-                          <li>Módulo 1: Introducción a la herramienta.</li>
-                          <li>Módulo 2: Creación de proyectos desde cero.</li>
-                          <li>Módulo 3: Exportación y buenas prácticas.</li>
-                          <li>Módulo 4: Proyecto final.</li>
-                        </ul>
+                {courses.map(course => {
+                  // Filtramos las reseñas de ESTE curso específico
+                  const resenasDelCurso = resenas.filter(r => Number(r.curso_id) === Number(course.id));
+
+                  return (
+                    <div key={`detail-${course.id}`} id={`detalle-curso-${course.id}`} className="scroll-mt-32 bg-white p-8 md:p-12 rounded-[3rem] shadow-sm border border-gray-100">
+                      <h2 className="text-3xl md:text-4xl font-black text-bimfli-navy mb-4">{course.title}</h2>
+                      <p className="text-xl text-bimfli-pink font-bold italic mb-8">Domina todas las herramientas profesionales paso a paso.</p>
+                      
+                      <div className="flex gap-4 overflow-x-auto mb-8 pb-4 snap-x">
+                        <div className="min-w-70 h-48 bg-gray-200 rounded-2xl snap-center flex items-center justify-center text-gray-400 font-bold">Imagen 1</div>
+                        <div className="min-w-70 h-48 bg-gray-200 rounded-2xl snap-center flex items-center justify-center text-gray-400 font-bold">Imagen 2</div>
+                        <div className="min-w-70 h-48 bg-gray-200 rounded-2xl snap-center flex items-center justify-center text-gray-400 font-bold">Imagen 3</div>
                       </div>
-                    </details>
-                  </div>
-                ))}
+                      
+                      <p className="text-gray-600 mb-10 leading-relaxed">
+                        {course.description} 
+                        <br /><br />
+                        Esta es la sección perfecta para incrustar el texto completo de la web externa.
+                      </p>
+                      
+                      <details className="group bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden cursor-pointer mb-12">
+                        <summary className="font-black p-6 text-bimfli-navy list-none flex justify-between items-center hover:bg-gray-100 transition-colors">
+                          VER TEMARIO COMPLETO
+                          <svg className="w-6 h-6 transform group-open:rotate-180 transition-transform text-bimfli-pink" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </summary>
+                        <div className="p-6 border-t border-gray-200 text-gray-600 bg-white">
+                          <ul className="list-disc pl-5 space-y-3 font-medium">
+                            <li>Módulo 1: Introducción a la herramienta.</li>
+                            <li>Módulo 2: Creación de proyectos desde cero.</li>
+                            <li>Módulo 3: Exportación y buenas prácticas.</li>
+                            <li>Módulo 4: Proyecto final.</li>
+                          </ul>
+                        </div>
+                      </details>
+
+                      {/* NUEVA SECCIÓN DE COMENTARIOS DE ALUMNOS */}
+                      <div className="pt-12 border-t border-gray-100">
+                        <h3 className="text-2xl font-black text-bimfli-navy mb-6 uppercase tracking-widest">Opiniones de los alumnos</h3>
+                        {resenasDelCurso.length === 0 ? (
+                          <p className="text-gray-400 italic bg-gray-50 p-6 rounded-3xl text-center">Aún no hay opiniones para este curso. ¡Sé el primero en valorarlo al terminarlo!</p>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {resenasDelCurso.map((resena, idx) => (
+                              <div key={idx} className="bg-gray-50 p-6 rounded-3xl border border-gray-100 hover:shadow-md transition-shadow">
+                                <div className="flex text-yellow-400 text-xl mb-3">
+                                  {'★'.repeat(resena.estrellas)}{'☆'.repeat(5 - resena.estrellas)}
+                                </div>
+                                <p className="text-gray-600 italic leading-relaxed mb-4 text-sm">"{resena.comentario}"</p>
+                                <div className="flex items-center gap-3">
+                                  <div className="w-8 h-8 bg-bimfli-navy rounded-full flex items-center justify-center text-white text-xs font-black">🎓</div>
+                                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Alumno Verificado</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {/* FIN SECCIÓN COMENTARIOS */}
+
+                    </div>
+                  );
+                })}
               </div>
             )}
           </>
@@ -259,7 +285,7 @@ function App() {
         {currentView === 'admin' && isAdmin && <AdminArea />}
       </main>
 
-      {/* FOOTER COMPLETO RESTAURADO */}
+      {/* FOOTER */}
       <footer className="bg-bimfli-navy text-gray-300 py-16 px-8 mt-auto rounded-t-[3rem] shadow-[0_-10px_40px_rgba(0,0,0,0.1)] relative z-10">
         <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-12">
           <div className="flex flex-col items-center md:items-start text-center md:text-left">
@@ -290,7 +316,7 @@ function App() {
         <div className="max-w-5xl mx-auto border-t border-white/10 mt-16 pt-8 text-center md:text-left text-xs font-bold text-gray-500 uppercase tracking-widest"><p>&copy; {new Date().getFullYear()} Bimfli Games. Todos los derechos reservados.</p></div>
       </footer>
 
-      {/* MODALES COMPLETOS RESTAURADOS */}
+      {/* MODAL CARRITO */}
       {isCartOpen && (
         <div className="fixed inset-0 bg-bimfli-navy/80 backdrop-blur-sm z-50 flex justify-end">
           <div className="bg-white h-full w-full max-w-md p-8 shadow-2xl flex flex-col">
@@ -312,7 +338,7 @@ function App() {
             </div>
             <div className="border-t border-gray-100 pt-6 mt-6">
               <div className="flex justify-between items-center mb-6"><span className="text-lg font-bold text-gray-400 uppercase tracking-widest">Total</span><span className="text-3xl font-black text-bimfli-navy">{totalCartPrice}€</span></div>
-              <button onClick={handleCheckout} disabled={cartItems.length === 0 || isCheckoutLoading} className="w-full bg-bimfli-pink text-white font-black py-4 rounded-2xl shadow-lg hover:bg-pink-600 transition-all uppercase tracking-widest flex justify-center items-center gap-2">
+              <button onClick={handleCheckout} disabled={cartItems.length === 0 || isCheckoutLoading} className="w-full bg-bimfli-pink text-white font-black py-4 rounded-2xl shadow-lg hover:bg-pink-600 transition-all uppercase tracking-widest flex justify-center items-center gap-2 cursor-pointer">
                 {isCheckoutLoading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'Comprar ahora'}
               </button>
             </div>
@@ -320,19 +346,20 @@ function App() {
         </div>
       )}
 
+      {/* MODAL AUTH */}
       {isLoginOpen && (
         <div className="fixed inset-0 bg-bimfli-navy/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white p-8 rounded-[2.5rem] w-full max-w-md relative shadow-2xl">
             <button onClick={() => setIsLoginOpen(false)} className="absolute top-6 right-6 text-gray-400 hover:text-bimfli-pink cursor-pointer">✕</button>
             <div className="flex justify-center gap-6 mb-6 border-b border-gray-100 pb-2">
-              <button onClick={() => setIsRegistering(false)} className={`font-black uppercase tracking-widest text-sm pb-2 transition-colors ${!isRegistering ? 'text-bimfli-navy border-b-2 border-bimfli-navy' : 'text-gray-300'}`}>Acceso</button>
-              <button onClick={() => setIsRegistering(true)} className={`font-black uppercase tracking-widest text-sm pb-2 transition-colors ${isRegistering ? 'text-bimfli-pink border-b-2 border-bimfli-pink' : 'text-gray-300'}`}>Nueva Cuenta</button>
+              <button onClick={() => setIsRegistering(false)} className={`font-black uppercase tracking-widest text-sm pb-2 transition-colors cursor-pointer ${!isRegistering ? 'text-bimfli-navy border-b-2 border-bimfli-navy' : 'text-gray-300'}`}>Acceso</button>
+              <button onClick={() => setIsRegistering(true)} className={`font-black uppercase tracking-widest text-sm pb-2 transition-colors cursor-pointer ${isRegistering ? 'text-bimfli-pink border-b-2 border-bimfli-pink' : 'text-gray-300'}`}>Nueva Cuenta</button>
             </div>
             {authError && <div className="bg-red-100 text-red-600 text-sm font-bold p-3 rounded-xl mb-4 text-center">{authError}</div>}
             <form onSubmit={handleAuth} className="flex flex-col gap-4">
               <input type="email" required placeholder="tu@email.com" className="w-full bg-gray-50 border-2 border-transparent rounded-2xl px-5 py-4 text-bimfli-navy focus:outline-none focus:border-bimfli-blue transition-all" />
               <input type="password" required placeholder="••••••••" minLength="6" className="w-full bg-gray-50 border-2 border-transparent rounded-2xl px-5 py-4 text-bimfli-navy focus:outline-none focus:border-bimfli-blue transition-all" />
-              <button type="submit" className={`w-full text-white font-black py-4 rounded-2xl mt-4 shadow-lg uppercase tracking-widest transition-colors ${isRegistering ? 'bg-bimfli-blue hover:bg-blue-600' : 'bg-bimfli-pink hover:bg-pink-600'}`}>
+              <button type="submit" className={`w-full text-white font-black py-4 rounded-2xl mt-4 shadow-lg uppercase tracking-widest transition-colors cursor-pointer ${isRegistering ? 'bg-bimfli-blue hover:bg-blue-600' : 'bg-bimfli-pink hover:bg-pink-600'}`}>
                 {isRegistering ? 'Crear Cuenta' : 'Entrar'}
               </button>
             </form>
