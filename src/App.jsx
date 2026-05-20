@@ -251,7 +251,10 @@ function App() {
                           src={`/carousel-${item}.jpg`} 
                           alt={`Academia ${item}`} 
                           className="w-full h-full object-cover transition-transform duration-700 hover:scale-105"
-                          onError={(e) => { e.target.onerror = null; e.target.src = `https://via.placeholder.com/600x400?text=Foto+${item}`; }}
+                          onError={(e) => { 
+                            e.target.onerror = null; 
+                            e.target.style.display = 'none'; 
+                          }}
                         />
                       </div>
                     ))}
