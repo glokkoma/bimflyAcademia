@@ -6,7 +6,6 @@ import { supabase } from './supabaseClient.js';
 import { loadStripe } from '@stripe/stripe-js';
 import ChatBot from './components/ChatBot';
 
-// Inicializamos Stripe con tu clave pública
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
 
 function App() {
@@ -26,11 +25,37 @@ function App() {
   
   const [misFavoritos, setMisFavoritos] = useState([]);
   const [resenas, setResenas] = useState([]);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showCookies, setShowCookies] = useState(false);
+
+  // NUEVO: Estado para saber qué curso estamos viendo en detalle
+  const [activeDetailId, setActiveDetailId] = useState(null);
 
   useEffect(() => {
     const handleScroll = () => setIsSticky(window.scrollY > 80);
     window.addEventListener('scroll', handleScroll);
+    if (!localStorage.getItem('bimfli_cookies_accepted')) {
+      setShowCookies(true);
+    }
     return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // NUEVO: Efecto mágico para leer la URL y aislar el curso de "Saber más"
+  useEffect(() => {
+    const checkHash = () => {
+      const hash = window.location.hash;
+      if (hash.startsWith('#detalle-curso-')) {
+        setActiveDetailId(Number(hash.replace('#detalle-curso-', '')));
+        // Un pequeño retraso para que el navegador haga el scroll suave hacia arriba
+        setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 50);
+      } else {
+        setActiveDetailId(null);
+      }
+    };
+    
+    checkHash(); // Comprobar al inicio
+    window.addEventListener('hashchange', checkHash); // Escuchar si el usuario hace clic en "Saber más"
+    return () => window.removeEventListener('hashchange', checkHash);
   }, []);
 
   useEffect(() => {
@@ -40,19 +65,16 @@ function App() {
         const { data: coursesData, error: coursesError } = await supabase.from('courses').select('*');
         if (coursesError) throw coursesError;
         setCourses(coursesData || []);
-
         const { data: resenasData } = await supabase.from('resenas').select('*');
         setResenas(resenasData || []);
       } catch (error) { console.error(error.message); }
       finally { setIsLoading(false); }
     }
     fetchInitialData();
-    
     supabase.auth.getSession().then(({ data: { session } }) => setUser(session?.user ?? null));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-      if (!currentUser) setCurrentView('store');
+      setUser(session?.user ?? null);
+      if (!session?.user) setCurrentView('store');
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -62,18 +84,13 @@ function App() {
       if (user) {
         const { data } = await supabase.from('favoritos').select('curso_id').eq('user_id', user.id);
         if (data) setMisFavoritos(data.map(f => Number(f.curso_id)));
-      } else {
-        setMisFavoritos([]);
-      }
+      } else { setMisFavoritos([]); }
     }
     fetchFavoritos();
   }, [user]);
 
   const toggleFavorito = async (cursoId) => {
-    if (!user) {
-      setIsLoginOpen(true);
-      return;
-    }
+    if (!user) { setIsLoginOpen(true); return; }
     const idNum = Number(cursoId);
     const esFavorito = misFavoritos.includes(idNum);
     try {
@@ -87,35 +104,56 @@ function App() {
     } catch (error) { console.error(error); }
   };
 
-  const isAdmin = user?.email === 'ism@bimfligames.com' || user?.email === 'leamsi120705@gmail.com'; 
-
   const handleAuth = async (e) => {
     e.preventDefault();
     setAuthError(''); setAuthSuccess('');
-    const email = e.target[0].value;
-    const password = e.target[1].value;
+    const email = e.target.email.value;
+    const password = e.target.password.value;
     if (isRegistering) {
       const { error } = await supabase.auth.signUp({ email, password });
       if (error) setAuthError(error.message);
-      else { setAuthSuccess('¡Cuenta creada!'); setTimeout(() => { setIsLoginOpen(false); setCurrentView('student'); }, 1500); }
+      else { setAuthSuccess('¡Cuenta creada! Puedes iniciar sesión.'); setTimeout(() => { setIsRegistering(false); }, 1500); }
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) setAuthError('Error de acceso.');
+      if (error) setAuthError('Error de acceso. Comprueba tus datos.');
       else { setIsLoginOpen(false); setCurrentView('student'); }
     }
   };
 
+  const handleForgotPassword = async () => {
+    setAuthError(''); setAuthSuccess('');
+    const emailInput = document.querySelector('input[name="email"]');
+    if (!emailInput || !emailInput.value) {
+      setAuthError('Por favor, escribe tu correo arriba y pulsa aquí de nuevo.');
+      return;
+    }
+    const { error } = await supabase.auth.resetPasswordForEmail(emailInput.value);
+    if (error) setAuthError(error.message);
+    else setAuthSuccess('¡Te hemos enviado un enlace al correo para recuperar tu contraseña!');
+  };
+
+  const handleAcceptCookies = () => {
+    localStorage.setItem('bimfli_cookies_accepted', 'true');
+    setShowCookies(false);
+  };
+
   const handleLogout = () => supabase.auth.signOut();
   const handleAddToCart = (course) => setCartItems([...cartItems, course]);
-  const removeFromCart = (index) => {
-    const newCart = [...cartItems];
-    newCart.splice(index, 1);
-    setCartItems(newCart);
-  };
+  const removeFromCart = (index) => { const newCart = [...cartItems]; newCart.splice(index, 1); setCartItems(newCart); };
   
+  // FUNCIONES DE NAVEGACIÓN LIMPIAS
+  const resetToHome = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setCurrentView('store');
+    window.location.hash = '';
+    setActiveDetailId(null);
+  };
+
   const navigateFromMenu = (view) => {
     setCurrentView(view);
     setIsMobileMenuOpen(false);
+    window.location.hash = '';
+    setActiveDetailId(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -128,30 +166,47 @@ function App() {
     finally { setIsCheckoutLoading(false); }
   };
 
+  // NUEVO: Función para desplazar el carrusel con los botones
+  const scrollCarousel = (direction) => {
+    const container = document.getElementById('carousel-track');
+    if (container) {
+      const scrollAmount = window.innerWidth < 768 ? 300 : 400; 
+      container.scrollBy({ left: direction === 'left' ? -scrollAmount : scrollAmount, behavior: 'smooth' });
+    }
+  };
+
+  const isAdmin = user?.email === 'ism@bimfligames.com' || user?.email === 'leamsi120705@gmail.com'; 
   const totalCartPrice = cartItems.reduce((acc, item) => acc + item.price, 0).toFixed(2);
 
   return (
-    <div className="min-h-screen bg-bimfli-mint text-bimfli-navy font-sans flex flex-col relative scroll-smooth">
-      {/* NAVBAR */}
-      <nav className="h-20 px-6 md:px-8 flex justify-between items-center sticky top-0 bg-bimfli-mint/95 backdrop-blur-md z-40 border-b border-white/20">
+    <div className="min-h-screen bg-bimfli-mint text-bimfli-navy font-sans flex flex-col relative scroll-smooth overflow-x-hidden">
+      
+      {/* NAVBAR: Ahora más translúcida (bg-bimfli-mint/60) y con mayor desenfoque (backdrop-blur-xl) */}
+      <nav className="h-20 px-6 md:px-8 flex justify-between items-center sticky top-0 bg-bimfli-mint/60 backdrop-blur-xl z-40 border-b border-white/20 transition-all duration-300 shadow-sm">
         <div className="flex items-center w-1/4 gap-4">
           <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="md:hidden text-bimfli-navy p-2 hover:bg-white/20 rounded-xl transition-colors cursor-pointer">
             {isMobileMenuOpen ? '✕' : '☰'}
           </button>
-          <button onClick={() => setCurrentView('store')} className={`hidden md:block font-black uppercase tracking-widest text-xs cursor-pointer transition-colors ${currentView === 'store' ? 'text-bimfli-pink' : 'text-bimfli-navy hover:text-bimfli-blue'}`}>Tienda</button>
-          {user && <button onClick={() => setCurrentView('student')} className={`hidden md:block font-black uppercase tracking-widest text-xs cursor-pointer transition-colors ${currentView === 'student' ? 'text-bimfli-pink' : 'text-bimfli-navy hover:text-bimfli-blue'}`}>Mi Área</button>}
+          <button onClick={resetToHome} className={`hidden md:block font-black uppercase tracking-widest text-xs cursor-pointer transition-colors ${currentView === 'store' ? 'text-bimfli-pink' : 'text-bimfli-navy hover:text-bimfli-blue'}`}>Bimfly Shop</button>
+          {user && <button onClick={() => navigateFromMenu('student')} className={`hidden md:block font-black uppercase tracking-widest text-xs cursor-pointer transition-colors ${currentView === 'student' ? 'text-bimfli-pink' : 'text-bimfli-navy hover:text-bimfli-blue'}`}>Mi Área</button>}
         </div>
 
+        {/* LOGO: Escala al 125% (scale-125) cuando scroleas */}
         <div className="w-1/2 flex justify-center">
-          <img src="/bimfliLogo-final.png" alt="Bimfli" className={`h-16 w-auto object-contain transition-all duration-500 transform cursor-pointer ${isSticky ? 'opacity-100 scale-100' : 'opacity-0 scale-75 pointer-events-none'}`} onClick={() => {window.scrollTo({top: 0, behavior: 'smooth'}); setCurrentView('store');}} />
+          <img 
+            src="/bimfliLogo-final.png" 
+            alt="Bimfli" 
+            className={`h-16 w-auto object-contain transition-all duration-500 transform cursor-pointer ${isSticky ? 'opacity-100 scale-125 translate-y-1' : 'opacity-0 scale-75 pointer-events-none'}`} 
+            onClick={resetToHome} 
+          />
         </div>
         
         <div className="flex items-center justify-end gap-3 md:gap-6 w-1/4">
           {!user ? (
-            <button onClick={() => {setIsLoginOpen(true); setIsRegistering(false);}} className="text-xs font-black uppercase tracking-tighter bg-white px-4 py-2 rounded-full shadow-sm hover:text-bimfli-pink cursor-pointer transition-colors">Entrar</button>
+            <button onClick={() => {setIsLoginOpen(true); setIsRegistering(false); setAuthError(''); setAuthSuccess('');}} className="text-xs font-black uppercase tracking-tighter bg-white px-4 py-2 rounded-full shadow-sm hover:text-bimfli-pink cursor-pointer transition-colors">Entrar</button>
           ) : (
             <div className="flex items-center gap-4">
-              {isAdmin && <button onClick={() => setCurrentView('admin')} className={`hidden md:block text-xs font-black uppercase tracking-widest transition-colors cursor-pointer ${currentView === 'admin' ? 'text-bimfli-pink' : 'text-bimfli-navy hover:text-bimfli-blue'}`}>Panel Jefe</button>}
+              {isAdmin && <button onClick={() => navigateFromMenu('admin')} className={`hidden md:block text-xs font-black uppercase tracking-widest transition-colors cursor-pointer ${currentView === 'admin' ? 'text-bimfli-pink' : 'text-bimfli-navy hover:text-bimfli-blue'}`}>Panel Jefe</button>}
               <button onClick={handleLogout} className="hidden md:block text-[10px] uppercase font-black text-gray-400 hover:text-red-500 cursor-pointer">Salir</button>
             </div>
           )}
@@ -162,7 +217,7 @@ function App() {
 
         {isMobileMenuOpen && (
           <div className="absolute top-20 left-4 w-64 bg-white shadow-2xl rounded-2xl border border-gray-100 flex flex-col py-2 md:hidden z-50 overflow-hidden animate-fade-in-down">
-            <button onClick={() => navigateFromMenu('store')} className={`text-left px-6 py-4 font-bold text-sm transition-colors border-b border-gray-50 ${currentView === 'store' ? 'text-bimfli-pink bg-pink-50/30' : 'text-bimfli-navy hover:bg-gray-50'}`}>Tienda</button>
+            <button onClick={resetToHome} className={`text-left px-6 py-4 font-bold text-sm transition-colors border-b border-gray-50 ${currentView === 'store' ? 'text-bimfli-pink bg-pink-50/30' : 'text-bimfli-navy hover:bg-gray-50'}`}>Tienda</button>
             {user && <button onClick={() => navigateFromMenu('student')} className={`text-left px-6 py-4 font-bold text-sm transition-colors border-b border-gray-50 ${currentView === 'student' ? 'text-bimfli-pink bg-pink-50/30' : 'text-bimfli-navy hover:bg-gray-50'}`}>Mi Área</button>}
             {isAdmin && <button onClick={() => navigateFromMenu('admin')} className={`text-left px-6 py-4 font-bold text-sm transition-colors border-b border-gray-50 ${currentView === 'admin' ? 'text-bimfli-pink bg-pink-50/30' : 'text-bimfli-navy hover:bg-gray-50'}`}>Panel Jefe</button>}
             <a href="mailto:bimfligames@gmail.com" onClick={() => setIsMobileMenuOpen(false)} className="text-left px-6 py-4 font-bold text-sm text-gray-500 hover:bg-gray-50 hover:text-bimfli-navy transition-colors border-b border-gray-50">Contacto</a>
@@ -174,52 +229,57 @@ function App() {
       <main className="max-w-5xl mx-auto px-6 pt-4 pb-32 grow w-full relative z-10">
         {currentView === 'store' && (
           <>
-            <div className="text-center mb-16 flex flex-col items-center">
-              <img src="/bimfliLogo-final.png" alt="Bimfli Academy" className="h-40 md:h-56 w-auto object-contain mb-4 drop-shadow-xl" />
-              <p className="text-lg md:text-xl font-bold text-bimfli-navy leading-relaxed max-w-2xl italic px-4">
-                ¡Especialízate aprendiendo las últimas herramientas digitales!
-              </p>
-            </div>
+            {/* SECCIÓN SUPERIOR: Solo se muestra si NO estamos dentro de un curso específico */}
+            {!activeDetailId && (
+              <div className="animate-fade-in">
+                <div className="text-center mb-12 flex flex-col items-center">
+                  <img src="/bimfliLogo-final.png" alt="Bimfli Academy" className="h-40 md:h-56 w-auto object-contain mb-4 drop-shadow-xl" />
+                  <p className="text-lg md:text-xl font-bold text-bimfli-navy leading-relaxed max-w-2xl italic px-4">
+                    ¡Especialízate aprendiendo las últimas herramientas digitales!
+                  </p>
+                </div>
 
-            {isLoading ? (
-              <div className="flex justify-center py-20"><div className="w-10 h-10 border-4 border-bimfli-pink border-t-transparent rounded-full animate-spin"></div></div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {courses.map(course => {
-                  const res = resenas.filter(r => Number(r.curso_id) === Number(course.id));
-                  const media = res.length > 0 ? (res.reduce((acc, r) => acc + r.estrellas, 0) / res.length).toFixed(1) : 0;
-                  return (
-                    <CourseCard 
-                      key={course.id} 
-                      course={course} 
-                      onAddToCart={handleAddToCart}
-                      isFavorite={misFavoritos.includes(Number(course.id))}
-                      onToggleFavorite={() => toggleFavorito(course.id)}
-                      rating={media}
-                      numReviews={res.length}
-                    />
-                  );
-                })}
+                {/* CARRUSEL MANUAL: Con botones y deslizamiento suave */}
+                <div className="relative w-full mb-20 rounded-[3rem] shadow-sm bg-white/50 py-4 border border-white/20 group">
+                  <button onClick={() => scrollCarousel('left')} className="absolute left-2 md:left-4 top-1/2 -translate-y-1/2 z-10 bg-white/90 shadow-lg p-3 md:p-4 rounded-full text-bimfli-pink hover:bg-bimfli-pink hover:text-white transition-colors opacity-0 group-hover:opacity-100 cursor-pointer hidden sm:block">◀</button>
+                  
+                  {/* Pista de scroll */}
+                  <div id="carousel-track" className="flex gap-6 overflow-x-auto snap-x px-6 md:px-12 pb-4 pt-2 scroll-smooth [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                    {[1, 2, 3, 4, 5].map((item, index) => (
+                      <div key={index} className="w-72 md:w-96 h-48 md:h-64 bg-gray-200 rounded-4xl shrink-0 snap-center overflow-hidden shadow-md">
+                        <img 
+                          src={`/carousel-${item}.jpg`} 
+                          alt={`Academia ${item}`} 
+                          className="w-full h-full object-cover transition-transform duration-700 hover:scale-105"
+                          onError={(e) => { e.target.onerror = null; e.target.src = `https://via.placeholder.com/600x400?text=Foto+${item}`; }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  <button onClick={() => scrollCarousel('right')} className="absolute right-2 md:right-4 top-1/2 -translate-y-1/2 z-10 bg-white/90 shadow-lg p-3 md:p-4 rounded-full text-bimfli-pink hover:bg-bimfli-pink hover:text-white transition-colors opacity-0 group-hover:opacity-100 cursor-pointer hidden sm:block">▶</button>
+                </div>
+
+                <h2 className="text-3xl md:text-4xl font-black text-bimfli-navy mb-12 uppercase tracking-widest text-center relative inline-block left-1/2 -translate-x-1/2">
+                  Descubre nuestros cursos
+                  <span className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-16 h-1.5 bg-bimfli-pink rounded-full"></span>
+                </h2>
               </div>
             )}
 
-            {/* SECCIONES DETALLADAS CON OPINIONES REVISADAS */}
-            {!isLoading && courses.length > 0 && (
-              <div className="mt-32 flex flex-col gap-24">
-                {courses.map(course => {
-                  // Filtramos las reseñas de ESTE curso específico
+            {/* SECCIÓN DETALLE: Solo se muestra el curso que hayamos clicado */}
+            {activeDetailId && (
+              <div className="animate-fade-in-up mb-24">
+                <button onClick={resetToHome} className="mb-8 font-black text-xs uppercase tracking-widest text-gray-400 hover:text-bimfli-pink transition-colors cursor-pointer flex items-center gap-2">
+                  <span>←</span> Volver al catálogo principal
+                </button>
+                
+                {courses.filter(c => Number(c.id) === activeDetailId).map(course => {
                   const resenasDelCurso = resenas.filter(r => Number(r.curso_id) === Number(course.id));
-
                   return (
-                    <div key={`detail-${course.id}`} id={`detalle-curso-${course.id}`} className="scroll-mt-32 bg-white p-8 md:p-12 rounded-[3rem] shadow-sm border border-gray-100">
+                    <div key={`detail-${course.id}`} id={`detalle-curso-${course.id}`} className="bg-white p-8 md:p-12 rounded-[3rem] shadow-sm border border-gray-100">
                       <h2 className="text-3xl md:text-4xl font-black text-bimfli-navy mb-4">{course.title}</h2>
                       <p className="text-xl text-bimfli-pink font-bold italic mb-8">Domina todas las herramientas profesionales paso a paso.</p>
-                      
-                      <div className="flex gap-4 overflow-x-auto mb-8 pb-4 snap-x">
-                        <div className="min-w-70 h-48 bg-gray-200 rounded-2xl snap-center flex items-center justify-center text-gray-400 font-bold">Imagen 1</div>
-                        <div className="min-w-70 h-48 bg-gray-200 rounded-2xl snap-center flex items-center justify-center text-gray-400 font-bold">Imagen 2</div>
-                        <div className="min-w-70 h-48 bg-gray-200 rounded-2xl snap-center flex items-center justify-center text-gray-400 font-bold">Imagen 3</div>
-                      </div>
                       
                       <p className="text-gray-600 mb-10 leading-relaxed">
                         {course.description} 
@@ -242,7 +302,6 @@ function App() {
                         </div>
                       </details>
 
-                      {/* NUEVA SECCIÓN DE COMENTARIOS DE ALUMNOS */}
                       <div className="pt-12 border-t border-gray-100">
                         <h3 className="text-2xl font-black text-bimfli-navy mb-6 uppercase tracking-widest">Opiniones de los alumnos</h3>
                         {resenasDelCurso.length === 0 ? (
@@ -264,10 +323,37 @@ function App() {
                           </div>
                         )}
                       </div>
-                      {/* FIN SECCIÓN COMENTARIOS */}
-
                     </div>
                   );
+                })}
+
+                <h3 className="text-2xl font-black text-bimfli-navy mt-24 mb-10 uppercase tracking-widest border-t border-white/20 pt-12">
+                  Otros cursos que te pueden interesar
+                </h3>
+              </div>
+            )}
+
+            {/* CUADRÍCULA DE TARJETAS: Muestra todos (si no hay uno seleccionado) o el resto de opciones */}
+            {isLoading ? (
+              <div className="flex justify-center py-20"><div className="w-10 h-10 border-4 border-bimfli-pink border-t-transparent rounded-full animate-spin"></div></div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {courses
+                  .filter(course => !activeDetailId || Number(course.id) !== activeDetailId)
+                  .map(course => {
+                    const res = resenas.filter(r => Number(r.curso_id) === Number(course.id));
+                    const media = res.length > 0 ? (res.reduce((acc, r) => acc + r.estrellas, 0) / res.length).toFixed(1) : 0;
+                    return (
+                      <CourseCard 
+                        key={course.id} 
+                        course={course} 
+                        onAddToCart={handleAddToCart}
+                        isFavorite={misFavoritos.includes(Number(course.id))}
+                        onToggleFavorite={() => toggleFavorito(course.id)}
+                        rating={media}
+                        numReviews={res.length}
+                      />
+                    );
                 })}
               </div>
             )}
@@ -292,7 +378,7 @@ function App() {
             <img src="/bimfliLogo-final.png" alt="Logo" className="h-20 w-auto object-contain mb-6 brightness-200 grayscale" />
             <div className="flex flex-col gap-2">
               <h4 className="text-white font-black uppercase tracking-widest text-xs mb-1">Contacta con nosotros</h4>
-              <p className="text-xs text-gray-400 font-bold leading-tight">C/ Beatas, 34, Promálaga<br />(Málaga TechPark) 29008 Málaga</p>
+              <p className="text-xs text-gray-400 font-bold leading-tight">C/ Beatas, 34, Promálaga<br /> 29008 Málaga</p>
               <a href="mailto:bimfligames@gmail.com" className="text-xs text-bimfli-pink font-black hover:underline">bimfligames@gmail.com</a>
             </div>
           </div>
@@ -346,26 +432,71 @@ function App() {
         </div>
       )}
 
-      {/* MODAL AUTH */}
+      {/* MODAL AUTH MEJORADO */}
       {isLoginOpen && (
         <div className="fixed inset-0 bg-bimfli-navy/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white p-8 rounded-[2.5rem] w-full max-w-md relative shadow-2xl">
             <button onClick={() => setIsLoginOpen(false)} className="absolute top-6 right-6 text-gray-400 hover:text-bimfli-pink cursor-pointer">✕</button>
+            
             <div className="flex justify-center gap-6 mb-6 border-b border-gray-100 pb-2">
-              <button onClick={() => setIsRegistering(false)} className={`font-black uppercase tracking-widest text-sm pb-2 transition-colors cursor-pointer ${!isRegistering ? 'text-bimfli-navy border-b-2 border-bimfli-navy' : 'text-gray-300'}`}>Acceso</button>
-              <button onClick={() => setIsRegistering(true)} className={`font-black uppercase tracking-widest text-sm pb-2 transition-colors cursor-pointer ${isRegistering ? 'text-bimfli-pink border-b-2 border-bimfli-pink' : 'text-gray-300'}`}>Nueva Cuenta</button>
+              <button onClick={() => { setIsRegistering(false); setAuthError(''); setAuthSuccess(''); }} className={`font-black uppercase tracking-widest text-sm pb-2 transition-colors cursor-pointer ${!isRegistering ? 'text-bimfli-navy border-b-2 border-bimfli-navy' : 'text-gray-300'}`}>Acceso</button>
+              <button onClick={() => { setIsRegistering(true); setAuthError(''); setAuthSuccess(''); }} className={`font-black uppercase tracking-widest text-sm pb-2 transition-colors cursor-pointer ${isRegistering ? 'text-bimfli-pink border-b-2 border-bimfli-pink' : 'text-gray-300'}`}>Nueva Cuenta</button>
             </div>
+            
             {authError && <div className="bg-red-100 text-red-600 text-sm font-bold p-3 rounded-xl mb-4 text-center">{authError}</div>}
+            {authSuccess && <div className="bg-green-100 text-green-700 text-sm font-bold p-3 rounded-xl mb-4 text-center">{authSuccess}</div>}
+            
             <form onSubmit={handleAuth} className="flex flex-col gap-4">
-              <input type="email" required placeholder="tu@email.com" className="w-full bg-gray-50 border-2 border-transparent rounded-2xl px-5 py-4 text-bimfli-navy focus:outline-none focus:border-bimfli-blue transition-all" />
-              <input type="password" required placeholder="••••••••" minLength="6" className="w-full bg-gray-50 border-2 border-transparent rounded-2xl px-5 py-4 text-bimfli-navy focus:outline-none focus:border-bimfli-blue transition-all" />
-              <button type="submit" className={`w-full text-white font-black py-4 rounded-2xl mt-4 shadow-lg uppercase tracking-widest transition-colors cursor-pointer ${isRegistering ? 'bg-bimfli-blue hover:bg-blue-600' : 'bg-bimfli-pink hover:bg-pink-600'}`}>
+              <input name="email" type="email" required placeholder="tu@email.com" className="w-full bg-gray-50 border-2 border-transparent rounded-2xl px-5 py-4 text-bimfli-navy focus:outline-none focus:border-bimfli-blue transition-all" />
+              <div className="relative w-full">
+                <input name="password" type={showPassword ? "text" : "password"} required placeholder="••••••••" minLength="6" className="w-full bg-gray-50 border-2 border-transparent rounded-2xl px-5 py-4 text-bimfli-navy focus:outline-none focus:border-bimfli-blue transition-all pr-12" />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-bimfli-pink cursor-pointer transition-colors" title={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}>
+                  {showPassword ? (
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                  ) : (
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                  )}
+                </button>
+              </div>
+              {!isRegistering && <button type="button" onClick={handleForgotPassword} className="text-right text-[10px] font-bold text-gray-400 hover:text-bimfli-pink transition-colors -mt-2 cursor-pointer">¿Olvidaste tu contraseña?</button>}
+              {isRegistering && (
+                <label className="flex items-center gap-3 -mt-1 cursor-pointer group">
+                  <input type="checkbox" required className="w-4 h-4 text-bimfli-pink border-gray-300 rounded focus:ring-bimfli-pink cursor-pointer" />
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest group-hover:text-bimfli-navy transition-colors">Acepto los <a href="#" className="text-bimfli-pink hover:underline">términos y condiciones</a></span>
+                </label>
+              )}
+              <button type="submit" className={`w-full text-white font-black py-4 rounded-2xl mt-2 shadow-lg uppercase tracking-widest transition-colors cursor-pointer ${isRegistering ? 'bg-bimfli-blue hover:bg-blue-600' : 'bg-bimfli-pink hover:bg-pink-600'}`}>
                 {isRegistering ? 'Crear Cuenta' : 'Entrar'}
               </button>
             </form>
           </div>
         </div>
       )}
+
+      {/* NUEVO: AVISO DE COOKIES FLOTANTE */}
+      {showCookies && (
+        <div className="fixed bottom-4 left-4 right-4 md:bottom-8 md:left-8 md:right-8 bg-white/95 backdrop-blur-md border border-gray-200 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] p-6 md:p-8 rounded-4xl z-100 flex flex-col md:flex-row items-center justify-between gap-6 animate-fade-in-up">
+          <div className="text-sm text-gray-600 max-w-3xl">
+            <h4 className="font-black text-bimfli-navy text-lg mb-2 uppercase tracking-widest flex items-center gap-2">🍪 Configuración de Cookies</h4>
+            <p className="leading-relaxed">
+              Utilizamos cookies propias y de terceros para mejorar nuestros servicios, personalizar y analizar su navegación, así como para mostrarle publicidad relacionada con sus preferencias. 
+              Puede aceptar todas las cookies, rechazarlas o configurar sus preferencias.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto shrink-0">
+            <button onClick={() => alert("Aquí abriríamos el panel detallado de configuración de cookies.")} className="px-6 py-3 text-xs font-black text-gray-400 uppercase tracking-widest hover:text-bimfli-navy hover:bg-gray-50 rounded-xl transition-colors cursor-pointer text-center">
+              Modificar
+            </button>
+            <button onClick={handleAcceptCookies} className="px-6 py-3 text-xs font-black text-gray-400 uppercase tracking-widest hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors cursor-pointer text-center">
+              Rechazar
+            </button>
+            <button onClick={handleAcceptCookies} className="px-8 py-3 bg-bimfli-pink text-white text-xs font-black rounded-xl uppercase tracking-widest hover:bg-pink-600 transition-colors shadow-lg cursor-pointer text-center">
+              Aceptar todas
+            </button>
+          </div>
+        </div>
+      )}
+
       <ChatBot />
     </div>
   );
