@@ -13,7 +13,7 @@ function ChatBot() {
   useEffect(() => {
     if (isOpen && messages.length === 0) {
       setMessages([
-        { sender: 'bot', text: '¡Hola! 👋 Soy tu "yo del futuro" tras haber estudiado en Bimfli Academy. Vengo a decirte que fue la mejor decisión que tomamos. 🚀' },
+        { sender: 'bot', text: '¡Hola! 👋 Soy tu profesor de 3D y programación" tras haber estudiado en Bimfli Academy. Vengo a decirte que fue la mejor decisión que tomamos. 🚀' },
         { sender: 'bot', text: '¿Sobre qué área te gustaría que te dé más información?' }
       ]);
     }
@@ -75,7 +75,7 @@ function ChatBot() {
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-bimfli-pink rounded-full flex items-center justify-center font-black text-xl">🤖</div>
               <div>
-                <h3 className="font-black text-sm uppercase tracking-widest">Tu Yo del Futuro</h3>
+                <h3 className="font-black text-sm uppercase tracking-widest">Soy tu profesor de 3D y programación</h3>
                 <p className="text-[10px] text-green-400">En línea</p>
               </div>
             </div>

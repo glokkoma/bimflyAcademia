@@ -22,14 +22,13 @@ function App() {
   const [authSuccess, setAuthSuccess] = useState('');
   const [isSticky, setIsSticky] = useState(false);
   const [currentView, setCurrentView] = useState('store');
-  
   const [misFavoritos, setMisFavoritos] = useState([]);
   const [resenas, setResenas] = useState([]);
   const [showPassword, setShowPassword] = useState(false);
   const [showCookies, setShowCookies] = useState(false);
-
-  // NUEVO: Estado para saber qué curso estamos viendo en detalle
   const [activeDetailId, setActiveDetailId] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('Todos');
 
   useEffect(() => {
     const handleScroll = () => setIsSticky(window.scrollY > 80);
@@ -40,21 +39,18 @@ function App() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // NUEVO: Efecto mágico para leer la URL y aislar el curso de "Saber más"
   useEffect(() => {
     const checkHash = () => {
       const hash = window.location.hash;
       if (hash.startsWith('#detalle-curso-')) {
         setActiveDetailId(Number(hash.replace('#detalle-curso-', '')));
-        // Un pequeño retraso para que el navegador haga el scroll suave hacia arriba
         setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 50);
       } else {
         setActiveDetailId(null);
       }
     };
-    
-    checkHash(); // Comprobar al inicio
-    window.addEventListener('hashchange', checkHash); // Escuchar si el usuario hace clic en "Saber más"
+    checkHash();
+    window.addEventListener('hashchange', checkHash);
     return () => window.removeEventListener('hashchange', checkHash);
   }, []);
 
@@ -121,12 +117,8 @@ function App() {
   };
 
   const handleForgotPassword = async () => {
-    setAuthError(''); setAuthSuccess('');
     const emailInput = document.querySelector('input[name="email"]');
-    if (!emailInput || !emailInput.value) {
-      setAuthError('Por favor, escribe tu correo arriba y pulsa aquí de nuevo.');
-      return;
-    }
+    if (!emailInput || !emailInput.value) { setAuthError('Por favor, escribe tu correo arriba.'); return; }
     const { error } = await supabase.auth.resetPasswordForEmail(emailInput.value);
     if (error) setAuthError(error.message);
     else setAuthSuccess('¡Te hemos enviado un enlace al correo para recuperar tu contraseña!');
@@ -141,12 +133,13 @@ function App() {
   const handleAddToCart = (course) => setCartItems([...cartItems, course]);
   const removeFromCart = (index) => { const newCart = [...cartItems]; newCart.splice(index, 1); setCartItems(newCart); };
   
-  // FUNCIONES DE NAVEGACIÓN LIMPIAS
   const resetToHome = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     setCurrentView('store');
     window.location.hash = '';
     setActiveDetailId(null);
+    setSearchTerm('');
+    setSelectedCategory('Todos');
   };
 
   const navigateFromMenu = (view) => {
@@ -166,7 +159,6 @@ function App() {
     finally { setIsCheckoutLoading(false); }
   };
 
-  // NUEVO: Función para desplazar el carrusel con los botones
   const scrollCarousel = (direction) => {
     const container = document.getElementById('carousel-track');
     if (container) {
@@ -175,30 +167,33 @@ function App() {
     }
   };
 
+  const cursosFiltradosYVisibles = courses
+    .filter(course => !activeDetailId || Number(course.id) !== activeDetailId) 
+    .filter(course => {
+      const cumpleTexto = course.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          course.description.toLowerCase().includes(searchTerm.toLowerCase());
+      const categoriaCurso = course.category || 'General';
+      const cumpleCategoria = selectedCategory === 'Todos' || categoriaCurso === selectedCategory;
+      return cumpleTexto && cumpleCategoria;
+    });
+
   const isAdmin = user?.email === 'ism@bimfligames.com' || user?.email === 'leamsi120705@gmail.com'; 
   const totalCartPrice = cartItems.reduce((acc, item) => acc + item.price, 0).toFixed(2);
 
   return (
     <div className="min-h-screen bg-bimfli-mint text-bimfli-navy font-sans flex flex-col relative scroll-smooth overflow-x-hidden">
-      
-      {/* NAVBAR: Ahora más translúcida (bg-bimfli-mint/60) y con mayor desenfoque (backdrop-blur-xl) */}
+      {/* NAVBAR */}
       <nav className="h-20 px-6 md:px-8 flex justify-between items-center sticky top-0 bg-bimfli-mint/60 backdrop-blur-xl z-40 border-b border-white/20 transition-all duration-300 shadow-sm">
         <div className="flex items-center w-1/4 gap-4">
           <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="md:hidden text-bimfli-navy p-2 hover:bg-white/20 rounded-xl transition-colors cursor-pointer">
             {isMobileMenuOpen ? '✕' : '☰'}
           </button>
-          <button onClick={resetToHome} className={`hidden md:block font-black uppercase tracking-widest text-xs cursor-pointer transition-colors ${currentView === 'store' ? 'text-bimfli-pink' : 'text-bimfli-navy hover:text-bimfli-blue'}`}>Bimfly Shop</button>
+          <button onClick={resetToHome} className={`hidden md:block font-black uppercase tracking-widest text-xs cursor-pointer transition-colors ${currentView === 'store' ? 'text-bimfli-pink' : 'text-bimfli-navy hover:text-bimfli-blue'}`}>Tienda</button>
           {user && <button onClick={() => navigateFromMenu('student')} className={`hidden md:block font-black uppercase tracking-widest text-xs cursor-pointer transition-colors ${currentView === 'student' ? 'text-bimfli-pink' : 'text-bimfli-navy hover:text-bimfli-blue'}`}>Mi Área</button>}
         </div>
 
-        {/* LOGO: Escala al 125% (scale-125) cuando scroleas */}
         <div className="w-1/2 flex justify-center">
-          <img 
-            src="/bimfliLogo-final.png" 
-            alt="Bimfli" 
-            className={`h-16 w-auto object-contain transition-all duration-500 transform cursor-pointer ${isSticky ? 'opacity-100 scale-125 translate-y-1' : 'opacity-0 scale-75 pointer-events-none'}`} 
-            onClick={resetToHome} 
-          />
+          <img src="/bimfliLogo-final.png" alt="Bimfli" className={`h-16 w-auto object-contain transition-all duration-500 transform cursor-pointer ${isSticky ? 'opacity-100 scale-125 translate-y-1' : 'opacity-0 scale-75 pointer-events-none'}`} onClick={resetToHome} />
         </div>
         
         <div className="flex items-center justify-end gap-3 md:gap-6 w-1/4">
@@ -229,7 +224,6 @@ function App() {
       <main className="max-w-5xl mx-auto px-6 pt-4 pb-32 grow w-full relative z-10">
         {currentView === 'store' && (
           <>
-            {/* SECCIÓN SUPERIOR: Solo se muestra si NO estamos dentro de un curso específico */}
             {!activeDetailId && (
               <div className="animate-fade-in">
                 <div className="text-center mb-12 flex flex-col items-center">
@@ -239,38 +233,72 @@ function App() {
                   </p>
                 </div>
 
-                {/* CARRUSEL MANUAL: Con botones y deslizamiento suave */}
-                <div className="relative w-full mb-20 rounded-[3rem] shadow-sm bg-white/50 py-4 border border-white/20 group">
-                  <button onClick={() => scrollCarousel('left')} className="absolute left-2 md:left-4 top-1/2 -translate-y-1/2 z-10 bg-white/90 shadow-lg p-3 md:p-4 rounded-full text-bimfli-pink hover:bg-bimfli-pink hover:text-white transition-colors opacity-0 group-hover:opacity-100 cursor-pointer hidden sm:block">◀</button>
+                {/* ARREGLO DE JEFE: He añadido 'overflow-hidden' al contenedor verde claro redondeado del fondo.
+                   Esto recortará cualquier cosa de dentro (los cajones grises) que intente salirse de los bordes redondeados.
+                */}
+                <div className="relative w-full overflow-hidden mb-16 rounded-[3rem] shadow-sm bg-white/50 py-4 border border-white/20 group">
                   
-                  {/* Pista de scroll */}
-                  <div id="carousel-track" className="flex gap-6 overflow-x-auto snap-x px-6 md:px-12 pb-4 pt-2 scroll-smooth [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                    {[1, 2, 3, 4, 5].map((item, index) => (
+                  {/* Botones Manuales */}
+                  <button onClick={() => scrollCarousel('left')} className="absolute left-4 top-1/2 -translate-y-1/2 z-10 bg-white/90 shadow-lg p-4 rounded-full text-bimfli-pink hover:bg-bimfli-pink hover:text-white transition-colors opacity-0 group-hover:opacity-100 cursor-pointer hidden sm:block">◀</button>
+                  
+                  {/* Pista de scroll manual con arrastre suave */}
+                  <div id="carousel-track" className="flex gap-6 overflow-x-auto snap-x px-12 pb-4 pt-2 scroll-smooth [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                    {[
+                      "https://picsum.photos/id/0/600/400",
+                      "https://picsum.photos/id/48/600/400",
+                      "https://picsum.photos/id/119/600/400",
+                      "https://picsum.photos/id/366/600/400",
+                      "https://picsum.photos/id/180/600/400"
+                    ].map((imgUrl, index) => (
                       <div key={index} className="w-72 md:w-96 h-48 md:h-64 bg-gray-200 rounded-4xl shrink-0 snap-center overflow-hidden shadow-md">
                         <img 
-                          src={`/carousel-${item}.jpg`} 
-                          alt={`Academia ${item}`} 
-                          className="w-full h-full object-cover transition-transform duration-700 hover:scale-105"
-                          onError={(e) => { 
-                            e.target.onerror = null; 
-                            e.target.style.display = 'none'; 
-                          }}
+                          src={imgUrl} 
+                          alt={`Academia Bimfli ${index + 1}`} 
+                          className="w-full h-full object-cover transition-transform duration-700 hover:scale-110 cursor-pointer"
                         />
                       </div>
                     ))}
                   </div>
 
-                  <button onClick={() => scrollCarousel('right')} className="absolute right-2 md:right-4 top-1/2 -translate-y-1/2 z-10 bg-white/90 shadow-lg p-3 md:p-4 rounded-full text-bimfli-pink hover:bg-bimfli-pink hover:text-white transition-colors opacity-0 group-hover:opacity-100 cursor-pointer hidden sm:block">▶</button>
+                  <button onClick={() => scrollCarousel('right')} className="absolute right-4 top-1/2 -translate-y-1/2 z-10 bg-white/90 shadow-lg p-4 rounded-full text-bimfli-pink hover:bg-bimfli-pink hover:text-white transition-colors opacity-0 group-hover:opacity-100 cursor-pointer hidden sm:block">▶</button>
                 </div>
 
-                <h2 className="text-3xl md:text-4xl font-black text-bimfli-navy mb-12 uppercase tracking-widest text-center relative inline-block left-1/2 -translate-x-1/2">
+                <h2 className="text-3xl md:text-4xl font-black text-bimfli-navy mb-8 uppercase tracking-widest text-center relative inline-block left-1/2 -translate-x-1/2">
                   Descubre nuestros cursos
                   <span className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-16 h-1.5 bg-bimfli-pink rounded-full"></span>
                 </h2>
+
+                {/* BUSCADOR Y FILTROS */}
+                <div className="mb-12 max-w-2xl mx-auto flex flex-col gap-4 animate-fade-in-up">
+                  <div className="relative">
+                    <input 
+                      type="text" 
+                      placeholder="🔍 Buscar cursos por título o palabra clave..." 
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full bg-white border border-gray-100 rounded-2xl px-6 py-4 text-sm text-bimfli-navy focus:outline-none focus:ring-2 focus:ring-bimfli-pink shadow-sm transition-all"
+                    />
+                    {searchTerm && (
+                      <button onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-bimfli-pink font-black text-xs">✕ BORRAR</button>
+                    )}
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-2 justify-center">
+                    {['Todos', 'Modelado 3D', 'Programación', 'Motores de Juego', 'General'].map(cat => (
+                      <button
+                        key={cat}
+                        onClick={() => setSelectedCategory(cat)}
+                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer border ${selectedCategory === cat ? 'bg-bimfli-navy text-white border-bimfli-navy shadow-md scale-105' : 'bg-white text-bimfli-navy border-gray-100 hover:border-bimfli-pink'}`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
 
-            {/* SECCIÓN DETALLE: Solo se muestra el curso que hayamos clicado */}
+            {/* SECCION DETALLE SEPARADO */}
             {activeDetailId && (
               <div className="animate-fade-in-up mb-24">
                 <button onClick={resetToHome} className="mb-8 font-black text-xs uppercase tracking-widest text-gray-400 hover:text-bimfli-pink transition-colors cursor-pointer flex items-center gap-2">
@@ -308,14 +336,12 @@ function App() {
                       <div className="pt-12 border-t border-gray-100">
                         <h3 className="text-2xl font-black text-bimfli-navy mb-6 uppercase tracking-widest">Opiniones de los alumnos</h3>
                         {resenasDelCurso.length === 0 ? (
-                          <p className="text-gray-400 italic bg-gray-50 p-6 rounded-3xl text-center">Aún no hay opiniones para este curso. ¡Sé el primero en valorarlo al terminarlo!</p>
+                          <p className="text-gray-400 italic bg-gray-50 p-6 rounded-3xl text-center">Aún no hay opiniones para este curso.</p>
                         ) : (
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             {resenasDelCurso.map((resena, idx) => (
                               <div key={idx} className="bg-gray-50 p-6 rounded-3xl border border-gray-100 hover:shadow-md transition-shadow">
-                                <div className="flex text-yellow-400 text-xl mb-3">
-                                  {'★'.repeat(resena.estrellas)}{'☆'.repeat(5 - resena.estrellas)}
-                                </div>
+                                <div className="flex text-yellow-400 text-xl mb-3">{'★'.repeat(resena.estrellas)}{'☆'.repeat(5 - resena.estrellas)}</div>
                                 <p className="text-gray-600 italic leading-relaxed mb-4 text-sm">"{resena.comentario}"</p>
                                 <div className="flex items-center gap-3">
                                   <div className="w-8 h-8 bg-bimfli-navy rounded-full flex items-center justify-center text-white text-xs font-black">🎓</div>
@@ -330,35 +356,39 @@ function App() {
                   );
                 })}
 
-                <h3 className="text-2xl font-black text-bimfli-navy mt-24 mb-10 uppercase tracking-widest border-t border-white/20 pt-12">
+                <h3 className="text-2xl font-black text-bimfli-navy mt-24 mb-10 uppercase tracking-widest border-t border-white/20 pt-12 text-center">
                   Otros cursos que te pueden interesar
                 </h3>
               </div>
             )}
 
-            {/* CUADRÍCULA DE TARJETAS: Muestra todos (si no hay uno seleccionado) o el resto de opciones */}
+            {/* CUADRÍCULA DE TARJETAS */}
             {isLoading ? (
               <div className="flex justify-center py-20"><div className="w-10 h-10 border-4 border-bimfli-pink border-t-transparent rounded-full animate-spin"></div></div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {courses
-                  .filter(course => !activeDetailId || Number(course.id) !== activeDetailId)
-                  .map(course => {
-                    const res = resenas.filter(r => Number(r.curso_id) === Number(course.id));
-                    const media = res.length > 0 ? (res.reduce((acc, r) => acc + r.estrellas, 0) / res.length).toFixed(1) : 0;
-                    return (
-                      <CourseCard 
-                        key={course.id} 
-                        course={course} 
-                        onAddToCart={handleAddToCart}
-                        isFavorite={misFavoritos.includes(Number(course.id))}
-                        onToggleFavorite={() => toggleFavorito(course.id)}
-                        rating={media}
-                        numReviews={res.length}
-                      />
-                    );
-                })}
-              </div>
+              <>
+                {cursosFiltradosYVisibles.length === 0 ? (
+                  <p className="text-center text-gray-400 italic py-10 bg-white rounded-3xl border border-gray-100 max-w-md mx-auto">No se ha encontrado ningún curso que coincida con tu búsqueda.</p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    {cursosFiltradosYVisibles.map(course => {
+                      const res = resenas.filter(r => Number(r.curso_id) === Number(course.id));
+                      const media = res.length > 0 ? (res.reduce((acc, r) => acc + r.estrellas, 0) / res.length).toFixed(1) : 0;
+                      return (
+                        <CourseCard 
+                          key={course.id} 
+                          course={course} 
+                          onAddToCart={handleAddToCart}
+                          isFavorite={misFavoritos.includes(Number(course.id))}
+                          onToggleFavorite={() => toggleFavorito(course.id)}
+                          rating={media}
+                          numReviews={res.length}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
@@ -381,7 +411,7 @@ function App() {
             <img src="/bimfliLogo-final.png" alt="Logo" className="h-20 w-auto object-contain mb-6 brightness-200 grayscale" />
             <div className="flex flex-col gap-2">
               <h4 className="text-white font-black uppercase tracking-widest text-xs mb-1">Contacta con nosotros</h4>
-              <p className="text-xs text-gray-400 font-bold leading-tight">C/ Beatas, 34, Promálaga<br /> 29008 Málaga</p>
+              <p className="text-xs text-gray-400 font-bold leading-tight">C/ Beatas, 34, Promálaga<br />(Málaga TechPark) 29008 Málaga</p>
               <a href="mailto:bimfligames@gmail.com" className="text-xs text-bimfli-pink font-black hover:underline">bimfligames@gmail.com</a>
             </div>
           </div>
@@ -435,20 +465,17 @@ function App() {
         </div>
       )}
 
-      {/* MODAL AUTH MEJORADO */}
+      {/* MODAL AUTH */}
       {isLoginOpen && (
         <div className="fixed inset-0 bg-bimfli-navy/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white p-8 rounded-[2.5rem] w-full max-w-md relative shadow-2xl">
             <button onClick={() => setIsLoginOpen(false)} className="absolute top-6 right-6 text-gray-400 hover:text-bimfli-pink cursor-pointer">✕</button>
-            
             <div className="flex justify-center gap-6 mb-6 border-b border-gray-100 pb-2">
               <button onClick={() => { setIsRegistering(false); setAuthError(''); setAuthSuccess(''); }} className={`font-black uppercase tracking-widest text-sm pb-2 transition-colors cursor-pointer ${!isRegistering ? 'text-bimfli-navy border-b-2 border-bimfli-navy' : 'text-gray-300'}`}>Acceso</button>
               <button onClick={() => { setIsRegistering(true); setAuthError(''); setAuthSuccess(''); }} className={`font-black uppercase tracking-widest text-sm pb-2 transition-colors cursor-pointer ${isRegistering ? 'text-bimfli-pink border-b-2 border-bimfli-pink' : 'text-gray-300'}`}>Nueva Cuenta</button>
             </div>
-            
             {authError && <div className="bg-red-100 text-red-600 text-sm font-bold p-3 rounded-xl mb-4 text-center">{authError}</div>}
             {authSuccess && <div className="bg-green-100 text-green-700 text-sm font-bold p-3 rounded-xl mb-4 text-center">{authSuccess}</div>}
-            
             <form onSubmit={handleAuth} className="flex flex-col gap-4">
               <input name="email" type="email" required placeholder="tu@email.com" className="w-full bg-gray-50 border-2 border-transparent rounded-2xl px-5 py-4 text-bimfli-navy focus:outline-none focus:border-bimfli-blue transition-all" />
               <div className="relative w-full">
@@ -476,30 +503,20 @@ function App() {
         </div>
       )}
 
-      {/* NUEVO: AVISO DE COOKIES FLOTANTE */}
+      {/* COOKIES */}
       {showCookies && (
         <div className="fixed bottom-4 left-4 right-4 md:bottom-8 md:left-8 md:right-8 bg-white/95 backdrop-blur-md border border-gray-200 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] p-6 md:p-8 rounded-4xl z-100 flex flex-col md:flex-row items-center justify-between gap-6 animate-fade-in-up">
           <div className="text-sm text-gray-600 max-w-3xl">
             <h4 className="font-black text-bimfli-navy text-lg mb-2 uppercase tracking-widest flex items-center gap-2">🍪 Configuración de Cookies</h4>
-            <p className="leading-relaxed">
-              Utilizamos cookies propias y de terceros para mejorar nuestros servicios, personalizar y analizar su navegación, así como para mostrarle publicidad relacionada con sus preferencias. 
-              Puede aceptar todas las cookies, rechazarlas o configurar sus preferencias.
-            </p>
+            <p className="leading-relaxed">Utilizamos cookies propias y de terceros para mejorar nuestros servicios y analizar su navegación de forma totalmente anónima.</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto shrink-0">
-            <button onClick={() => alert("Aquí abriríamos el panel detallado de configuración de cookies.")} className="px-6 py-3 text-xs font-black text-gray-400 uppercase tracking-widest hover:text-bimfli-navy hover:bg-gray-50 rounded-xl transition-colors cursor-pointer text-center">
-              Modificar
-            </button>
-            <button onClick={handleAcceptCookies} className="px-6 py-3 text-xs font-black text-gray-400 uppercase tracking-widest hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors cursor-pointer text-center">
-              Rechazar
-            </button>
-            <button onClick={handleAcceptCookies} className="px-8 py-3 bg-bimfli-pink text-white text-xs font-black rounded-xl uppercase tracking-widest hover:bg-pink-600 transition-colors shadow-lg cursor-pointer text-center">
-              Aceptar todas
-            </button>
+            <button onClick={() => alert("Configuración detallada.")} className="px-6 py-3 text-xs font-black text-gray-400 uppercase tracking-widest hover:text-bimfli-navy hover:bg-gray-50 rounded-xl transition-colors cursor-pointer text-center">Modificar</button>
+            <button onClick={handleAcceptCookies} className="px-6 py-3 text-xs font-black text-gray-400 uppercase tracking-widest hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors cursor-pointer text-center">Rechazar</button>
+            <button onClick={handleAcceptCookies} className="px-8 py-3 bg-bimfli-pink text-white text-xs font-black rounded-xl uppercase tracking-widest hover:bg-pink-600 transition-all shadow-lg cursor-pointer text-center">Aceptar todas</button>
           </div>
         </div>
       )}
-
       <ChatBot />
     </div>
   );
